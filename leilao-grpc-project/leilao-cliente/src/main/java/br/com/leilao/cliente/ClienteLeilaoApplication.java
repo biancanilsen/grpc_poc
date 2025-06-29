@@ -18,7 +18,7 @@ public class ClienteLeilaoApplication {
 
     public static void main(String[] args) throws InterruptedException {
         // Cria o canal de comunicação com o servidor
-        ManagedChannel channel = ManagedChannelBuilder.forAddress("localhost", 6565)
+        ManagedChannel channel = ManagedChannelBuilder.forAddress("127.0.0.1", 6565)
                 .usePlaintext() // Apenas para desenvolvimento
                 .build();
 
