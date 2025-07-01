@@ -1,10 +1,6 @@
 package br.com.leilao.cliente;
 
-import br.com.leilao.grpc.AtualizacaoLeilao;
-import br.com.leilao.grpc.LanceRequest;
-import br.com.leilao.grpc.LanceResponse;
-import br.com.leilao.grpc.LeilaoServiceGrpc;
-import br.com.leilao.grpc.AcompanharRequest;
+import br.com.leilao.grpc.*;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.stub.StreamObserver;
@@ -17,15 +13,11 @@ import java.util.concurrent.TimeUnit;
 public class ClienteLeilaoApplication {
 
     public static void main(String[] args) throws InterruptedException {
-        // Cria o canal de comunicação com o servidor
         ManagedChannel channel = ManagedChannelBuilder.forAddress("127.0.0.1", 6565)
-                .usePlaintext() // Apenas para desenvolvimento
+                .usePlaintext()
                 .build();
 
-        // Cria o stub para chamadas assíncronas/streaming
         LeilaoServiceGrpc.LeilaoServiceStub asyncStub = LeilaoServiceGrpc.newStub(channel);
-
-        // Cria o stub para chamadas síncronas/blocking
         LeilaoServiceGrpc.LeilaoServiceBlockingStub blockingStub = LeilaoServiceGrpc.newBlockingStub(channel);
 
         System.out.print("Digite seu nome de usuário: ");
@@ -34,14 +26,26 @@ public class ClienteLeilaoApplication {
 
         System.out.println("--- Bem-vindo ao leilão, " + nomeUsuario + "! ---");
 
-        // 1. Conecta-se para receber atualizações em uma thread separada
         acompanharLeilao(asyncStub);
 
-        // 2. Loop principal para enviar lances
-        System.out.println("Digite um valor para dar um lance ou 'sair' para fechar.");
+        System.out.println("Digite um valor para dar um lance, 'encerrar' para finalizar o leilão, ou 'sair' para sair.");
         while (true) {
             String input = scanner.nextLine();
             if ("sair".equalsIgnoreCase(input)) {
+                break;
+            } else if ("encerrar".equalsIgnoreCase(input)) {
+                try {
+                    ResultadoLeilao resultado = blockingStub.encerrarLeilao(EncerrarRequest.newBuilder().build());
+                    System.out.println(">> Leilão encerrado!");
+                    System.out.println("Ganhador: " + resultado.getGanhador());
+                    System.out.printf("Valor do lance vencedor: R$ %.2f\n", resultado.getValorGanhador());
+                    System.out.println("Lances realizados:");
+                    for (Lance lance : resultado.getLancesList()) {
+                        System.out.printf(" - %s: R$ %.2f\n", lance.getNomeUsuario(), lance.getValor());
+                    }
+                } catch (Exception e) {
+                    System.out.println("Erro ao encerrar o leilão: " + e.getMessage());
+                }
                 break;
             }
 
@@ -70,11 +74,9 @@ public class ClienteLeilaoApplication {
     private static void acompanharLeilao(LeilaoServiceGrpc.LeilaoServiceStub asyncStub) {
         AcompanharRequest request = AcompanharRequest.newBuilder().build();
 
-        // Implementa o StreamObserver para lidar com as mensagens do servidor
         asyncStub.acompanharLeilao(request, new StreamObserver<>() {
             @Override
             public void onNext(AtualizacaoLeilao value) {
-                // Mensagem recebida do servidor
                 System.out.printf("\n[ATUALIZAÇÃO] %s | Lance atual: R$ %.2f (por: %s)\n> ",
                         value.getMensagem(), value.getValorMinimoAtual(), value.getUltimoLicitante());
             }

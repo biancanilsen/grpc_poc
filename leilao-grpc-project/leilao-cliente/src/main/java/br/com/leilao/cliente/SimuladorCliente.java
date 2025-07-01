@@ -1,6 +1,5 @@
 package br.com.leilao.cliente;
 
-import br.com.leilao.grpc.AcompanharRequest;
 import br.com.leilao.grpc.AtualizacaoLeilao;
 import br.com.leilao.grpc.LanceRequest;
 import br.com.leilao.grpc.LeilaoServiceGrpc;
@@ -11,100 +10,94 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 public class SimuladorCliente {
 
-    // Usamos AtomicReference para guardar o último valor do leilão de forma segura entre as threads.
-    // Uma thread estará ouvindo as atualizações do servidor e a outra estará fazendo os lances.
     private static final AtomicReference<BigDecimal> maiorLanceAtual = new AtomicReference<>(BigDecimal.ZERO);
+    private static final AtomicBoolean leilaoAtivo = new AtomicBoolean(true);
 
     public static void main(String[] args) throws InterruptedException {
         Random random = new Random();
         String nomeBot = "Bot-" + random.nextInt(1000);
         log.info("Iniciando o simulador: {}", nomeBot);
 
-        BigDecimal orcamentoMaximo = new BigDecimal("150.00").add(BigDecimal.valueOf(random.nextInt(150)));
+        BigDecimal orcamentoMaximo = new BigDecimal("150.00")
+                .add(BigDecimal.valueOf(random.nextInt(150)));
         log.info("[{}] Meu orçamento máximo é de R$ {}", nomeBot, orcamentoMaximo.toPlainString());
 
-        ManagedChannel channel = ManagedChannelBuilder.forAddress("127.0.0.1", 6565)
+        var channel = ManagedChannelBuilder.forAddress("127.0.0.1", 6565)
                 .usePlaintext()
                 .build();
 
-        LeilaoServiceGrpc.LeilaoServiceStub asyncStub = LeilaoServiceGrpc.newStub(channel);
-        LeilaoServiceGrpc.LeilaoServiceBlockingStub blockingStub = LeilaoServiceGrpc.newBlockingStub(channel);
+        var asyncStub = LeilaoServiceGrpc.newStub(channel);
+        var blockingStub = LeilaoServiceGrpc.newBlockingStub(channel);
 
         acompanharLeilao(asyncStub, nomeBot);
 
-        while (true) {
+        while (leilaoAtivo.get()) {
             try {
                 Thread.sleep(3000 + random.nextInt(5000));
 
-                BigDecimal lanceBase = maiorLanceAtual.get();
-
-                // Se o lance atual já for maior que o orçamento, o bot desiste.
-                if (lanceBase.compareTo(orcamentoMaximo) > 0) {
-                    log.info("[{}] O preço (R$ {}) ultrapassou meu orçamento (R$ {}). Desistindo do leilão.",
-                            nomeBot, lanceBase.toPlainString(), orcamentoMaximo.toPlainString());
-                    break; // Sai do loop de lances e encerra a atividade do bot.
+                BigDecimal atual = maiorLanceAtual.get();
+                if (atual.compareTo(orcamentoMaximo) > 0) {
+                    log.info("[{}] Lance atual R$ {} > orçamento R$ {} ⇒ desistindo.", 
+                             nomeBot, atual, orcamentoMaximo);
+                    break;
                 }
 
-                BigDecimal novoLance = lanceBase.add(BigDecimal.valueOf(1 + random.nextInt(15)));
-
-                // Garante que o bot não dê um lance acima do seu próprio orçamento
-                if (novoLance.compareTo(orcamentoMaximo) > 0) {
-                    novoLance = orcamentoMaximo;
-                    log.info("[{}] Dando meu lance final e máximo de R$ {}", nomeBot, novoLance.toPlainString());
+                BigDecimal novo = atual.add(BigDecimal.valueOf(1 + random.nextInt(15)));
+                if (novo.compareTo(orcamentoMaximo) > 0) {
+                    novo = orcamentoMaximo;
+                    log.info("[{}] Dando lance final: R$ {}", nomeBot, novo);
                 }
 
-                log.info("[{}] Tentando lance de R$ {}", nomeBot, novoLance.toPlainString());
-
-                LanceRequest request = LanceRequest.newBuilder()
-                        .setValor(novoLance.doubleValue())
+                log.info("[{}] Tentando lance: R$ {}", nomeBot, novo);
+                var req = LanceRequest.newBuilder()
+                        .setValor(novo.doubleValue())
                         .setNomeUsuario(nomeBot)
                         .build();
-
-                blockingStub.fazerLance(request);
+                blockingStub.fazerLance(req);
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.error("Thread do simulador foi interrompida.");
+                log.error("Thread interrompida, encerrando bot.");
                 break;
             } catch (Exception e) {
-                log.error("[{}] Erro ao comunicar com o servidor: {}", nomeBot, e.getMessage());
+                log.error("[{}] Erro: {} — tentando reconectar após 5s", nomeBot, e.getMessage());
                 Thread.sleep(5000);
             }
         }
 
         channel.shutdown();
-        log.info("[{}] Simulador encerrado.", nomeBot);
+        log.info("[{}] Simulador finalizado.", nomeBot);
     }
 
     private static void acompanharLeilao(LeilaoServiceGrpc.LeilaoServiceStub asyncStub, String nomeBot) {
-        AcompanharRequest request = AcompanharRequest.newBuilder().build();
+        asyncStub.acompanharLeilao(
+            br.com.leilao.grpc.AcompanharRequest.newBuilder().build(),
+            new StreamObserver<>() {
+                @Override
+                public void onNext(AtualizacaoLeilao v) {
+                    BigDecimal novo = BigDecimal.valueOf(v.getValorMinimoAtual());
+                    maiorLanceAtual.set(novo);
+                    log.info("[{}] Atualização: R$ {} por {}", nomeBot, novo, v.getUltimoLicitante());
+                }
 
-        asyncStub.acompanharLeilao(request, new StreamObserver<>() {
-            @Override
-            public void onNext(AtualizacaoLeilao value) {
-                // Quando uma nova atualização chega, guardamos o novo maior lance
-                BigDecimal novoMaiorLance = BigDecimal.valueOf(value.getValorMinimoAtual());
-                maiorLanceAtual.set(novoMaiorLance);
-                log.info("[{}] Leilão atualizado! Maior lance agora é R$ {} por {}",
-                        nomeBot, value.getValorMinimoAtual(), value.getUltimoLicitante());
-            }
+                @Override
+                public void onError(Throwable t) {
+                    leilaoAtivo.set(false);
+                    log.error("[{}] Erro no stream: {}", nomeBot, t.getMessage());
+                }
 
-            @Override
-            public void onError(Throwable t) {
-                // Se der erro na conexão, apenas logamos. O loop principal tentará reconectar.
-                maiorLanceAtual.set(BigDecimal.ZERO); // Reseta o valor para recomeçar
-                log.error("[{}] Conexão com o stream do leilão perdida: {}", nomeBot, t.getMessage());
+                @Override
+                public void onCompleted() {
+                    leilaoAtivo.set(false);
+                    log.info("[{}] LEILÃO ENCERRADO PELO SERVIDOR!", nomeBot);
+                }
             }
-
-            @Override
-            public void onCompleted() {
-                log.info("[{}] O servidor encerrou o stream do leilão.", nomeBot);
-            }
-        });
+        );
     }
 }
