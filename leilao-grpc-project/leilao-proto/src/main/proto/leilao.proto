@@ -40,3 +40,17 @@ message AtualizacaoLeilao {
   string ultimoLicitante = 2;
   string mensagem = 3; // e.g., "Novo lance recebido!"
 }
+
+message ResultadoLeilao {
+  string ganhador = 1;
+  double valorGanhador = 2;
+  repeated Lance lances = 3;
+}
+
+message EncerrarRequest {}
+
+service LeilaoService {
+  rpc fazerLance(LanceRequest) returns (LanceResponse);
+  rpc acompanharLeilao(AcompanharRequest) returns (stream AtualizacaoLeilao);
+  rpc encerrarLeilao(EncerrarRequest) returns (ResultadoLeilao);
+}

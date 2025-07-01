@@ -14,29 +14,26 @@ import java.util.concurrent.atomic.AtomicReference;
 @Component
 public class LeilaoManager {
 
-    // Guarda o valor do lance mais alto de forma atômica/thread-safe
     private final AtomicReference<BigDecimal> valorAtual = new AtomicReference<>(new BigDecimal("99.99"));
+    private final Set<StreamObserver<AtualizacaoLeilao>> observadores = ConcurrentHashMap.newKeySet();
+    private final List<LanceInfo> lances = new ArrayList<>();
 
     @Getter
     private final AtomicReference<String> ultimoLicitante = new AtomicReference<>("Sistema");
 
-    // Guarda todos os clientes que estão "ouvindo" as atualizações.
-    // ConcurrentHashMap.newKeySet() cria um Set thread-safe.
-    private final Set<StreamObserver<AtualizacaoLeilao>> observadores = ConcurrentHashMap.newKeySet();
-
     public synchronized boolean novoLance(BigDecimal valor, String nomeUsuario) {
-        if (valor.compareTo(valorAtual.get()) > 0) {
-            this.valorAtual.set(valor);
-            this.ultimoLicitante.set(nomeUsuario);
-            notificarObservadores(nomeUsuario);
-            return true;
-        }
-        return false;
+    LanceInfo atualMaior = getMaiorLance();
+    if (atualMaior == null || valor.compareTo(atualMaior.getValor()) > 0) {
+        lances.add(new LanceInfo(nomeUsuario, valor));
+        notificarTodos(nomeUsuario, valor);
+        return true;
     }
+    return false;
+}
 
     public void adicionarObservador(StreamObserver<AtualizacaoLeilao> observador) {
         observadores.add(observador);
-        // Envia o estado atual assim que o cliente se conecta
+
         observador.onNext(getAtualizacaoAtual("Bem-vindo ao leilão!"));
     }
 
@@ -55,5 +52,37 @@ public class LeilaoManager {
                 .setUltimoLicitante(ultimoLicitante.get())
                 .setMensagem(mensagem)
                 .build();
+    }
+
+    public synchronized LanceInfo getMaiorLance() {
+        return lances.stream().max(Comparator.comparing(LanceInfo::getValor)).orElse(null);
+    }
+
+    public synchronized List<LanceInfo> getTodosLances() {
+        return new ArrayList<>(lances);
+    }
+
+    private void notificarTodos(String nome, BigDecimal valor) {
+        AtualizacaoLeilao atualizacao = AtualizacaoLeilao.newBuilder()
+                .setValorMinimoAtual(valor.doubleValue())
+                .setUltimoLicitante(nome)
+                .setMensagem("Novo lance!")
+                .build();
+        observadores.forEach(obs -> {
+            try {
+                obs.onNext(atualizacao);
+            } catch (Exception e) {
+            }
+        });
+    }
+
+    public synchronized void notificarEncerramento(ResultadoLeilao resultado) {
+        observadores.forEach(obs -> {
+            try {
+                obs.onCompleted(); 
+            } catch (Exception e) {
+            }
+        });
+        observadores.clear();
     }
 }

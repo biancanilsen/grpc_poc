@@ -47,4 +47,36 @@ public class LeilaoServiceImpl extends LeilaoServiceGrpc.LeilaoServiceImplBase {
         // gerando um erro/cancelamento que pode ser tratado. No entanto, para
         // simplicidade, a remoção pode ser feita em um gerenciador de conexões mais robusto.
     }
+
+   @Override
+public void encerrarLeilao(EncerrarRequest request, StreamObserver<ResultadoLeilao> responseObserver) {
+    log.info("Encerrando o leilão...");
+
+    LanceInfo maiorLance = leilaoManager.getMaiorLance();
+    List<LanceInfo> todosLances = leilaoManager.getTodosLances();
+
+    ResultadoLeilao.Builder resultadoBuilder = ResultadoLeilao.newBuilder()
+            .setGanhador(maiorLance.getNomeUsuario())
+            .setValorGanhador(maiorLance.getValor().doubleValue());
+
+    if (maiorLance == null) {
+        responseObserver.onError(Status.FAILED_PRECONDITION
+        .withDescription("Nenhum lance registrado.")
+        .asRuntimeException());
+        return;
+    }
+
+    for (LanceInfo lance : todosLances) {
+        resultadoBuilder.addLances(Lance.newBuilder()
+                .setNomeUsuario(lance.getNomeUsuario())
+                .setValor(lance.getValor().doubleValue())
+                .build());
+    }
+
+    responseObserver.onNext(resultadoBuilder.build());
+    responseObserver.onCompleted();
+
+    leilaoManager.notificarEncerramento(resultadoBuilder.build());
+}
+
 }
