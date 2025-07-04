@@ -1,12 +1,15 @@
 package br.com.leilao.servidor;
 
+import br.com.leilao.grpc.ResultadoLeilao;
 import br.com.leilao.grpc.AtualizacaoLeilao;
 import io.grpc.stub.StreamObserver;
 import lombok.Getter;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;

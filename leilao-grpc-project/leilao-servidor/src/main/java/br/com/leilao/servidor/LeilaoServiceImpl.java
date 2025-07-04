@@ -1,12 +1,14 @@
 package br.com.leilao.servidor;
 
 import br.com.leilao.grpc.*;
+import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lognet.springboot.grpc.GRpcService;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Slf4j
 @GRpcService
@@ -41,11 +43,6 @@ public class LeilaoServiceImpl extends LeilaoServiceGrpc.LeilaoServiceImplBase {
     public void acompanharLeilao(AcompanharRequest request, StreamObserver<AtualizacaoLeilao> responseObserver) {
         log.info("Novo cliente acompanhando o leilão.");
         leilaoManager.adicionarObservador(responseObserver);
-
-        // A conexão permanecerá aberta. O LeilaoManager cuidará de enviar os dados.
-        // Precisamos detectar quando o cliente se desconecta, mas o gRPC faz isso
-        // gerando um erro/cancelamento que pode ser tratado. No entanto, para
-        // simplicidade, a remoção pode ser feita em um gerenciador de conexões mais robusto.
     }
 
    @Override

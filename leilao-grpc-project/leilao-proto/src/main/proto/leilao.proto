@@ -2,55 +2,54 @@ syntax = "proto3";
 
 package leilao;
 
-// Opções para a geração do código Java
 option java_multiple_files = true;
 option java_package = "br.com.leilao.grpc";
 option java_outer_classname = "LeilaoProto";
 
-// O serviço principal do leilao
 service LeilaoService {
-  // RPC Unary: Um cliente envia um lance.
-  rpc FazerLance(LanceRequest) returns (LanceResponse);
+  rpc fazerLance(LanceRequest) returns (LanceResponse);
 
-  // RPC Server Streaming: Um cliente se conecta para receber atualizações.
-  // O servidor envia um stream de atualizações sobre o valor atual do leilão.
-  rpc AcompanharLeilao(AcompanharRequest) returns (stream AtualizacaoLeilao);
+  rpc acompanharLeilao(AcompanharRequest) returns (stream AtualizacaoLeilao);
+
+  rpc encerrarLeilao(EncerrarRequest) returns (ResultadoLeilao);
 }
 
-// Mensagem para um cliente fazer um lance
+
+message Lance {
+  string nome_usuario = 1;
+  double valor = 2;
+}
+
 message LanceRequest {
   double valor = 1;
   string nomeUsuario = 2;
 }
 
-// Resposta do servidor para uma tentativa de lance
 message LanceResponse {
   bool sucesso = 1;
   string mensagem = 2;
 }
 
-// Mensagem de requisição para acompanhar o leilão (pode ser vazia por agora)
 message AcompanharRequest {
   // No futuro, poderia ter um 'itemId' para leilões específicos
 }
 
-// Mensagem que o servidor envia via stream para os clientes
+enum StatusLeilao {
+  ATIVO = 0;
+  FECHADO = 1;
+}
+
 message AtualizacaoLeilao {
   double valorMinimoAtual = 1;
   string ultimoLicitante = 2;
-  string mensagem = 3; // e.g., "Novo lance recebido!"
-}
-
-message ResultadoLeilao {
-  string ganhador = 1;
-  double valorGanhador = 2;
-  repeated Lance lances = 3;
+  string mensagem = 3;
+  StatusLeilao status = 5;
 }
 
 message EncerrarRequest {}
 
-service LeilaoService {
-  rpc fazerLance(LanceRequest) returns (LanceResponse);
-  rpc acompanharLeilao(AcompanharRequest) returns (stream AtualizacaoLeilao);
-  rpc encerrarLeilao(EncerrarRequest) returns (ResultadoLeilao);
+message ResultadoLeilao {
+  string ganhador = 1;
+  double valorGanhador = 2;
+  repeated Lance lances = 3; // Lista com o histórico de todos os lances
 }
